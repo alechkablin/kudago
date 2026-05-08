@@ -568,6 +568,16 @@
     const STORAGE_KEY = "luvcodesys_v4";
     const AUTH_USERS_KEY = "kudago_auth_users_v1";
     const ONBOARDING_KEY = "kudago_onboarding_seen";
+
+    /*
+      Общие голоса и плашка победителя между разными браузерами — через Firebase Realtime Database.
+      1) https://console.firebase.google.com — создай проект → Build → Realtime Database → Create database.
+      2) Project settings → Your apps → Web — скопируй firebaseConfig в объект FIREBASE_CONFIG ниже.
+      3) Realtime Database → Rules: для теста с друзьями по секретной ссылке можно временно
+         { "rules": { "kudago": { ".read": true, ".write": true } } }
+         Потом ужесточи (иначе любой, кто угадает путь, сможет писать в kudago/).
+      4) Все открывают одну ссылку (например GitHub Pages). Опционально комната: ?room=пятница — тогда путь в БД kudago/пятница/.
+    */
     const FIREBASE_CONFIG = {
       apiKey: "",
       authDomain: "",
@@ -575,7 +585,15 @@
       projectId: "",
       appId: ""
     };
-    const CLOUD_ROOM = "main-room";
+
+    function sanitizeCloudRoomParam(value) {
+      if (value == null || typeof value !== "string") return null;
+      const t = value.trim().slice(0, 64);
+      if (!t) return null;
+      const safe = t.replace(/[^a-zA-Z0-9_-]/g, "");
+      return safe.length ? safe : null;
+    }
+    const CLOUD_ROOM = sanitizeCloudRoomParam(new URLSearchParams(window.location.search).get("room")) || "main-room";
     const heartsGrid = document.getElementById("heartsGrid");
     const traceLayer = document.getElementById("traceLayer");
     const resultsEl = document.getElementById("results");
@@ -779,6 +797,17 @@
       return Object.values(FIREBASE_CONFIG).every(v => typeof v === "string" && v.trim().length > 0);
     }
 
+    function maybeFirebaseConfigHint() {
+      if (hasFirebaseConfig()) return;
+      try {
+        if (sessionStorage.getItem("kudago_firebase_hint") === "1") return;
+        sessionStorage.setItem("kudago_firebase_hint", "1");
+      } catch (e) {
+        return;
+      }
+      toast("общие голоса: заполни FIREBASE_CONFIG в index.html и включи Realtime Database в Firebase");
+    }
+
     function initCloudSync() {
       if (!hasFirebaseConfig()) return;
       if (typeof firebase === "undefined" || !firebase?.database) return;
@@ -822,7 +851,7 @@
           update();
           if (!cloudReadyToastShown) {
             cloudReadyToastShown = true;
-            toast("облачная синхронизация включена");
+            toast(`облачная синхронизация: комната «${CLOUD_ROOM}»`);
           }
         });
       } catch (e) {
@@ -1973,6 +2002,7 @@
         loadAuthUsers();
         normalizeState();
         initCloudSync();
+        maybeFirebaseConfigHint();
       } catch (e) {
         console.error("KUDAGO state restore failed, using defaults", e);
         hardResetLocalData();
