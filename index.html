@@ -1,0 +1,2006 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KUDAGO</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <style>
+    :root {
+      --bg: #050508;
+      --panel: #0a0a0a;
+      --line: #222222;
+      --text: #eeeeee;
+      --muted: #888888;
+      --neon-cyan: #00ffcc;
+      --neon-rasp: #ff0055;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      overscroll-behavior-y: none;
+      font-family: "Inter", sans-serif;
+    }
+
+    body { overflow-x: hidden; }
+
+    .bg-hearts {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .bg-hearts::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(5, 5, 8, 0.55) 0%, rgba(5, 5, 8, 0.35) 38%, rgba(5, 5, 8, 0.62) 100%);
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .heart-cell {
+      position: absolute;
+      width: 34px;
+      height: 34px;
+      pointer-events: auto;
+      cursor: crosshair;
+      z-index: 0;
+      animation: driftHeart var(--drift-duration, 18s) ease-in-out infinite;
+      animation-delay: var(--drift-delay, 0s);
+      will-change: transform;
+    }
+
+    .heart-outline {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      top: 5px;
+      left: 5px;
+      transform: rotate(45deg);
+      border: 1px solid var(--neon-cyan);
+      opacity: 0.32;
+      animation: pulseHeart 4s ease-in-out infinite;
+    }
+
+    .heart-outline::before,
+    .heart-outline::after {
+      content: "";
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border: 1px solid var(--neon-cyan);
+      border-radius: 50%;
+      background: transparent;
+    }
+
+    .heart-outline::before { left: -50%; top: 0; }
+    .heart-outline::after { left: 0; top: -50%; }
+
+    .heart-cell:hover .heart-outline {
+      opacity: 1;
+      box-shadow: 0 0 16px rgba(0, 255, 204, 0.75);
+    }
+
+    @keyframes pulseHeart {
+      0%, 100% { transform: rotate(45deg) scale(0.95); opacity: 0.12; }
+      50% { transform: rotate(45deg) scale(1.08); opacity: 0.58; }
+    }
+
+    @keyframes driftHeart {
+      0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+      25% { transform: translate3d(10px, -18px, 0) rotate(4deg); }
+      50% { transform: translate3d(-8px, 12px, 0) rotate(-3deg); }
+      75% { transform: translate3d(14px, -10px, 0) rotate(3deg); }
+    }
+
+    .trace-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    .trace-line {
+      position: absolute;
+      height: 1px;
+      background: var(--neon-cyan);
+      box-shadow: 0 0 8px rgba(0, 255, 204, 0.85);
+      transform-origin: left center;
+      animation: traceOut 400ms linear forwards;
+    }
+
+    @keyframes traceOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    .app {
+      position: relative;
+      z-index: 10;
+      min-height: 100dvh;
+      padding: 20px;
+    }
+
+    .grid-12 {
+      max-width: 1320px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 20px;
+    }
+
+    .brand {
+      font-family: "Inter", sans-serif;
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+
+    .mono { font-family: "JetBrains Mono", monospace; }
+
+    .btn-neon {
+      border: 1px solid var(--neon-cyan);
+      color: var(--neon-cyan);
+      background: #000;
+      border-radius: 4px;
+      padding: 12px 24px;
+      text-transform: lowercase;
+      letter-spacing: 2px;
+      line-height: 1;
+    }
+
+    .btn-neon:hover {
+      background: var(--neon-cyan);
+      color: #000;
+    }
+
+    .input-neon {
+      border: 1px solid #3a3a3a;
+      background: #070707;
+      color: var(--text);
+      border-radius: 4px;
+      padding: 12px 14px;
+      width: 100%;
+      font-family: "JetBrains Mono", monospace;
+    }
+
+    .input-neon:focus {
+      outline: none;
+      border-color: var(--neon-cyan);
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 0;
+      padding: 20px;
+    }
+
+    .tiny-line {
+      height: 1px;
+      background: #222;
+      margin: 12px 0;
+    }
+
+    .scroll-neon::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+
+    .scroll-neon::-webkit-scrollbar-thumb {
+      background: var(--neon-cyan);
+    }
+
+    .hint {
+      border: 1px solid #222;
+      background: #0a0a0a;
+      padding: 10px 12px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      color: #888;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      z-index: 40;
+      padding: 20px;
+    }
+    .modal-overlay.show { display: block; }
+    .modal-card {
+      max-width: 680px;
+      margin: 6vh auto 0;
+      background: #0a0a0a;
+      border: 1px solid #222;
+      padding: 20px;
+    }
+
+    .toast-wrap {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 60;
+      display: grid;
+      gap: 8px;
+    }
+    .toast {
+      border: 1px solid #00ffcc;
+      background: #050508;
+      color: #00ffcc;
+      padding: 8px 10px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+    }
+
+    .metric {
+      border: 1px solid #222;
+      background: #08080a;
+      padding: 8px 10px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      color: #888;
+    }
+
+    .tag-bar {
+      height: 8px;
+      background: #111;
+      border: 1px solid #222;
+      position: relative;
+    }
+    .tag-bar > span {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      background: #00ffcc;
+    }
+
+    #map {
+      width: 100%;
+      height: 340px;
+      border: 1px solid #222;
+      background: #050508;
+    }
+    .map-points {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      max-height: 100%;
+      overflow: auto;
+    }
+    .map-point {
+      border: 1px solid #222;
+      background: #08080a;
+      padding: 8px;
+    }
+    .map-point a {
+      color: #00ffcc;
+      text-decoration: none;
+      border-bottom: 1px dashed #00ffcc66;
+    }
+
+    .winner-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 80;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .winner-overlay.show { display: flex; }
+    .winner-card {
+      width: min(860px, 100%);
+      background: #0a0a0a;
+      border: 1px solid #00ffcc;
+      padding: 16px;
+      position: relative;
+    }
+    .winner-image {
+      width: 100%;
+      height: min(44vh, 320px);
+      object-fit: cover;
+      border: 1px solid #222;
+      margin-bottom: 12px;
+    }
+    .fireworks {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .spark {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #00ffcc;
+      box-shadow: 0 0 10px #00ffcc;
+      animation: burst 1s ease-out infinite;
+    }
+    @keyframes burst {
+      0% { transform: translate(0, 0) scale(1); opacity: 1; }
+      100% { transform: translate(var(--tx), var(--ty)) scale(0.3); opacity: 0; }
+    }
+
+    @media (max-width: 900px) {
+      .grid-12 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .mobile-full { grid-column: 1 / -1 !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="heartsGrid" class="bg-hearts"></div>
+  <div id="traceLayer" class="trace-layer"></div>
+
+  <div class="app">
+    <div class="grid-12">
+      <header class="mobile-full col-span-12 flex items-center justify-between border-b border-[#222] pb-4">
+        <div class="brand">KUDAGO</div>
+        <div class="hidden md:flex items-center gap-2">
+          <button class="btn-neon text-[11px] px-2 py-1" data-jump="favoritesWidget">избранное</button>
+          <button class="btn-neon text-[11px] px-2 py-1" data-jump="bundlesWidget">связки</button>
+          <button class="btn-neon text-[11px] px-2 py-1" data-jump="mapWidget">карта</button>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="authStatus" class="mono text-[12px] text-[#888]">гость</span>
+          <button id="authBtn" class="btn-neon">войти</button>
+        </div>
+      </header>
+
+      <aside id="sidebar" class="mobile-full col-span-12 md:col-span-3 card">
+        <div class="mono text-[12px] text-[#888] mb-2">режим поиска</div>
+        <div class="border border-[#222] p-1 grid grid-cols-3 gap-1">
+          <button id="modePlacesBtn" class="btn-neon text-[11px] px-2 py-2">места</button>
+          <button id="modeFoodBtn" class="btn-neon text-[11px] px-2 py-2">покушать</button>
+          <button id="modeScreenBtn" class="btn-neon text-[11px] px-2 py-2">фильм/сериал</button>
+        </div>
+        <div class="hint mt-2" id="searchModeHint">режим: места</div>
+        <div class="tiny-line"></div>
+        <label class="mono text-[12px] text-[#888]">поиск</label>
+        <input id="searchInput" class="input-neon mt-2" placeholder="по названию места, тегу..." />
+        <div id="quickChips" class="mt-2 flex flex-wrap gap-2"></div>
+        <div class="tiny-line"></div>
+        <div id="budgetFilterWrap">
+          <label class="mono text-[12px] text-[#888]">бюджет</label>
+          <select id="budgetFilter" class="input-neon mt-2">
+            <option value="all">любой бюджет</option>
+            <option value="budget">бюджетно</option>
+            <option value="mid">средне</option>
+            <option value="high">дорого</option>
+          </select>
+        </div>
+        <select id="sortBy" class="input-neon mt-2">
+          <option value="score">сортировка: релевантность</option>
+          <option value="name">сортировка: название</option>
+          <option value="rating">сортировка: рейтинг</option>
+          <option value="distance">сортировка: ближе ко мне</option>
+        </select>
+        <button id="nearbyBtn" class="btn-neon w-full mt-2">рядом со мной</button>
+        <div id="geoInfo" class="hint mt-2">геолокация не включена</div>
+        <div class="tiny-line"></div>
+        <div id="smartFolders" class="mt-3 space-y-2"></div>
+        <div class="tiny-line"></div>
+        <div class="mono text-[12px] text-[#888] mb-2">сохраненные подборки</div>
+        <select id="collectionSelect" class="input-neon">
+          <option value="date">для свидания</option>
+          <option value="weekend">на выходные</option>
+          <option value="friends">с друзьями</option>
+        </select>
+        <div id="collectionsMeta" class="hint mt-2"></div>
+        <div class="tiny-line"></div>
+        <div class="mono text-[12px] text-[#888] mb-2">групповое голосование</div>
+        <label class="mono text-[12px] text-[#888]">сколько человек</label>
+        <input id="participantsInput" type="number" min="2" value="2" class="input-neon mt-2" />
+        <div id="votesHint" class="hint mt-2">для победы нужно: 2 голоса из 2</div>
+        <div class="tiny-line"></div>
+        <button id="clearLocalDataBtn" class="btn-neon w-full">очистить локальные данные</button>
+        <div class="hint mt-2">сбросит аккаунты, голоса, избранное и онбординг на этом устройстве</div>
+      </aside>
+
+      <main id="mainContent" class="mobile-full col-span-12 md:col-span-9 space-y-5">
+        <section id="widgets" class="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+          <article id="recommendationsWidget" draggable="true" data-widget="recommendations" class="widget card xl:max-h-[50vh] xl:overflow-auto scroll-neon">
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-[24px] font-extrabold tracking-[-0.02em]">рекомендации</div>
+              <span id="resultCount" class="mono text-[#00FFCC]">0</span>
+            </div>
+            <div id="tagFilters" class="flex flex-wrap gap-2 mb-3"></div>
+            <div id="results" class="space-y-2 max-h-[44vh] overflow-auto scroll-neon"></div>
+          </article>
+
+          <article draggable="true" data-widget="analytics" class="widget card xl:max-h-[50vh] xl:overflow-auto scroll-neon">
+            <div class="text-[24px] font-extrabold tracking-[-0.02em] mb-3">аналитика</div>
+            <div id="analyticsPanels" class="space-y-2"></div>
+            <div class="tiny-line"></div>
+            <div class="mono text-[12px] text-[#888] mb-2">воронка выбора</div>
+            <div id="funnelStats" class="grid grid-cols-2 gap-2"></div>
+            <div class="tiny-line"></div>
+            <div class="mono text-[12px] text-[#888] mb-2">топ-3 сравнение</div>
+            <div id="topCompare" class="space-y-2"></div>
+            <div class="tiny-line"></div>
+            <div class="mono text-[12px] text-[#888] mb-2">тепловая карта тегов</div>
+            <div id="tagHeat" class="space-y-2"></div>
+            <div class="tiny-line"></div>
+            <div id="groupInsights" class="space-y-2"></div>
+          </article>
+
+          <article id="favoritesWidget" draggable="true" data-widget="favorites" class="widget card xl:col-span-2">
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-[24px] font-extrabold tracking-[-0.02em]">избранное</div>
+              <button id="clearFavorites" class="btn-neon">очистить</button>
+            </div>
+            <div id="favorites" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+          </article>
+
+          <article draggable="true" data-widget="collections" class="widget card xl:col-span-2">
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-[24px] font-extrabold tracking-[-0.02em]">мои подборки</div>
+              <span id="activeCollectionName" class="mono text-[#00FFCC]">для свидания</span>
+            </div>
+            <div id="collectionItems" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+          </article>
+
+          <article id="bundlesWidget" draggable="true" data-widget="bundles" class="widget card xl:col-span-2">
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-[24px] font-extrabold tracking-[-0.02em]">связки вечера</div>
+              <button id="buildBundleBtn" class="btn-neon">подобрать к месту</button>
+            </div>
+            <div id="bundleHint" class="hint mb-2">выбери место (в деталке) или лидера голосования — и я подберу где поесть рядом</div>
+            <div class="grid md:grid-cols-3 gap-2 mb-2">
+              <label class="mono text-[11px] text-[#888]">старт
+                <input id="routeStartTime" type="time" value="18:00" class="input-neon mt-1">
+              </label>
+              <label class="mono text-[11px] text-[#888]">длительность места (мин)
+                <input id="routePlaceDuration" type="number" min="30" step="15" value="90" class="input-neon mt-1">
+              </label>
+              <label class="mono text-[11px] text-[#888]">длительность ужина (мин)
+                <input id="routeFoodDuration" type="number" min="30" step="15" value="75" class="input-neon mt-1">
+              </label>
+            </div>
+            <div id="bundleList" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2"></div>
+            <div class="tiny-line"></div>
+            <div class="flex items-center justify-between mb-2">
+              <div class="mono text-[12px] text-[#888]">маршрут вечера: место -> ужин -> экран</div>
+              <button id="buildRouteBtn" class="btn-neon">построить маршрут</button>
+            </div>
+            <div id="routePlan" class="space-y-2"></div>
+          </article>
+
+          <article id="mapWidget" draggable="true" data-widget="map" class="widget card xl:col-span-2">
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-[24px] font-extrabold tracking-[-0.02em]">карта мест</div>
+              <button id="fitMapBtn" class="btn-neon">обновить точки</button>
+            </div>
+            <div id="map"></div>
+          </article>
+
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="commandPalette" class="hidden fixed inset-0 z-30 bg-black/70 p-4">
+    <div class="max-w-xl mx-auto card">
+      <input id="commandInput" class="input-neon" placeholder="команда..." />
+      <div id="commandList" class="mt-2 space-y-2"></div>
+    </div>
+  </div>
+
+  <div id="detailsModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div id="detailsTitle" class="text-[28px] font-extrabold tracking-[-0.02em]">...</div>
+          <div id="detailsSubtitle" class="text-[#888] text-[14px] mt-1"></div>
+        </div>
+        <button id="closeDetailsBtn" class="btn-neon">закрыть</button>
+      </div>
+      <div class="tiny-line"></div>
+      <p id="detailsDesc" class="text-[16px] text-[#EEEEEE]"></p>
+      <div id="detailsTags" class="mt-3 flex flex-wrap gap-2"></div>
+      <div class="mt-4 flex gap-2">
+        <a id="detailsSearchLink" class="btn-neon" target="_blank" rel="noopener">в поиск</a>
+        <button id="detailsSaveBtn" class="btn-neon">в подборку</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="onboarding" class="modal-overlay">
+    <div class="modal-card">
+      <div class="text-[28px] font-extrabold tracking-[-0.02em]">быстрый старт</div>
+      <div class="tiny-line"></div>
+      <div class="space-y-2 text-[15px] text-[#888]">
+        <div>1) Введи запрос или нажми быстрый чип.</div>
+        <div>2) Открой карточку кликом, чтобы увидеть детали.</div>
+        <div>3) Сохраняй места в подборки справа.</div>
+      </div>
+      <button id="closeOnboardingBtn" class="btn-neon mt-4">понятно</button>
+    </div>
+  </div>
+
+  <div id="toasts" class="toast-wrap"></div>
+
+  <div id="authModal" class="modal-overlay">
+    <div class="modal-card max-w-md">
+      <div class="text-[24px] font-extrabold tracking-[-0.02em] mb-2">авторизация</div>
+      <div class="tiny-line"></div>
+      <label class="mono text-[12px] text-[#888]">логин</label>
+      <input id="authLoginInput" class="input-neon mt-2" placeholder="например: alina" />
+      <label class="mono text-[12px] text-[#888] mt-3 block">пароль</label>
+      <input id="authPassInput" type="password" class="input-neon mt-2" placeholder="пароль" />
+      <div class="flex gap-2 mt-4">
+        <button id="authLoginBtn" class="btn-neon">войти</button>
+        <button id="authRegisterBtn" class="btn-neon">регистрация</button>
+        <button id="authCloseBtn" class="btn-neon">закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="winnerOverlay" class="winner-overlay">
+    <div class="winner-card">
+      <div class="fireworks" id="fireworks"></div>
+      <img id="winnerImage" class="winner-image" alt="winner place" />
+      <div class="text-[28px] font-extrabold tracking-[-0.02em] text-[#00FFCC]">ура!! выбрали место!!!</div>
+      <div id="winnerName" class="text-[22px] mt-1"></div>
+      <div id="winnerVotes" class="mono text-[#888] mt-1"></div>
+      <button id="closeWinnerBtn" class="btn-neon mt-4">закрыть</button>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script>
+    const STORAGE_KEY = "luvcodesys_v4";
+    const AUTH_USERS_KEY = "kudago_auth_users_v1";
+    const ONBOARDING_KEY = "kudago_onboarding_seen";
+    const FIREBASE_CONFIG = {
+      apiKey: "",
+      authDomain: "",
+      databaseURL: "",
+      projectId: "",
+      appId: ""
+    };
+    const CLOUD_ROOM = "main-room";
+    const heartsGrid = document.getElementById("heartsGrid");
+    const traceLayer = document.getElementById("traceLayer");
+    const resultsEl = document.getElementById("results");
+    const favoritesEl = document.getElementById("favorites");
+
+    const BASE_DATA = [
+      { id: 1, type: "places", name: "Московский зоопарк", desc: "Крупнейший зоопарк в центре Москвы.", tags: ["зоопарк", "животные", "семья", "днем"], budget: "mid", rating: 4.8, lat: 55.7601, lon: 37.5803 },
+      { id: 2, type: "places", name: "Смотровая Москва-Сити", desc: "Ночной свет и городской горизонт.", tags: ["романтика", "вид", "вечер"], budget: "high", rating: 4.9, lat: 55.7496, lon: 37.5370 },
+      { id: 3, type: "places", name: "Парк Зарядье", desc: "Современный парк с панорамными точками.", tags: ["природа", "прогулка", "днем"], budget: "budget", rating: 4.7, lat: 55.7511, lon: 37.6286 },
+      { id: 4, type: "places", name: "ГЭС-2", desc: "Культурное пространство и выставки.", tags: ["культура", "искусство", "днем"], budget: "mid", rating: 4.7, lat: 55.7407, lon: 37.6097 },
+      { id: 5, type: "places", name: "Патриаршие пруды", desc: "Атмосферный район для прогулки.", tags: ["романтика", "прогулка", "вечер"], budget: "budget", rating: 4.6, lat: 55.7646, lon: 37.5937 },
+      { id: 6, type: "places", name: "ВДНХ", desc: "Павильоны, фонтаны и события.", tags: ["прогулка", "архитектура", "семья"], budget: "budget", rating: 4.8, lat: 55.8298, lon: 37.6331 },
+      { id: 7, type: "places", name: "Третьяковская галерея", desc: "Классика русского искусства.", tags: ["культура", "музей", "днем"], budget: "mid", rating: 4.9, lat: 55.7414, lon: 37.6208 },
+      { id: 8, type: "places", name: "Парк Горького", desc: "Городской парк с активностями.", tags: ["природа", "активно", "друзья"], budget: "budget", rating: 4.7, lat: 55.7299, lon: 37.6034 },
+      { id: 9, type: "places", name: "Аптекарский огород", desc: "Ботанический сад и оранжереи.", tags: ["природа", "спокойно", "днем"], budget: "mid", rating: 4.7, lat: 55.7810, lon: 37.6362 },
+      { id: 10, type: "places", name: "Остров мечты", desc: "Крытый парк развлечений.", tags: ["развлечения", "семья", "активно"], budget: "high", rating: 4.5, lat: 55.6937, lon: 37.6739 },
+      { id: 29, type: "places", name: "Коломенское", desc: "Большой парк-музей с набережной и видами.", tags: ["природа", "прогулка", "история"], budget: "budget", rating: 4.8, lat: 55.6676, lon: 37.6687 },
+      { id: 30, type: "places", name: "Царицыно", desc: "Парк и дворцовый ансамбль для длинной прогулки.", tags: ["архитектура", "прогулка", "романтика"], budget: "budget", rating: 4.8, lat: 55.6146, lon: 37.6831 },
+      { id: 31, type: "places", name: "Измайловский кремль", desc: "Яркий культурный кластер и ремесленные ряды.", tags: ["культура", "друзья", "выходные"], budget: "mid", rating: 4.5, lat: 55.7945, lon: 37.7502 },
+      { id: 32, type: "places", name: "Новодевичий монастырь", desc: "Тихий исторический маршрут и пруд.", tags: ["история", "спокойно", "днем"], budget: "budget", rating: 4.7, lat: 55.7262, lon: 37.5563 },
+      { id: 33, type: "places", name: "Музей космонавтики", desc: "Интерактивные экспозиции о космосе.", tags: ["музей", "семья", "в помещении"], budget: "mid", rating: 4.7, lat: 55.8228, lon: 37.6396 },
+      { id: 34, type: "places", name: "Парк Сокольники", desc: "Аллеи, катания и активный отдых.", tags: ["активно", "природа", "друзья"], budget: "budget", rating: 4.6, lat: 55.7942, lon: 37.6799 },
+      { id: 35, type: "places", name: "Сад Эрмитаж", desc: "Камерный парк для спокойного вечера.", tags: ["романтика", "спокойно", "вечер"], budget: "budget", rating: 4.6, lat: 55.7727, lon: 37.6121 },
+      { id: 36, type: "places", name: "Депо Лесная", desc: "Фуд-молл и городская атмосфера центра.", tags: ["друзья", "в помещении", "вечер"], budget: "mid", rating: 4.6, lat: 55.7817, lon: 37.5864 },
+      { id: 37, type: "places", name: "Музей современного искусства Гараж", desc: "Современные выставки и лекции.", tags: ["искусство", "музей", "днем"], budget: "mid", rating: 4.7, lat: 55.7318, lon: 37.6039 },
+      { id: 38, type: "places", name: "Хлебозавод №9", desc: "Креативный квартал, маркеты и события.", tags: ["друзья", "культура", "выходные"], budget: "mid", rating: 4.5, lat: 55.8067, lon: 37.5845 },
+      { id: 39, type: "places", name: "Дизайн-завод Флакон", desc: "Лофты, шоурумы и городские фестивали.", tags: ["культура", "друзья", "вечер"], budget: "mid", rating: 4.5, lat: 55.8077, lon: 37.5836 },
+      { id: 40, type: "places", name: "Северный речной вокзал", desc: "Набережная, парк и атмосферные виды на воду.", tags: ["прогулка", "вид", "романтика"], budget: "budget", rating: 4.7, lat: 55.8554, lon: 37.4664 },
+
+      { id: 11, type: "food", name: "AVA Bistro", desc: "Тихий премиальный ужин.", tags: ["ужин", "пара", "авторская"], budget: "high", rating: 4.8, lat: 55.7592, lon: 37.6137 },
+      { id: 12, type: "food", name: "White Rabbit", desc: "Панорамный ресторан высокой кухни.", tags: ["вид", "праздник", "ужин"], budget: "high", rating: 4.8, lat: 55.7478, lon: 37.5822 },
+      { id: 13, type: "food", name: "Ryba Family", desc: "Свежие морепродукты в центре.", tags: ["морепродукты", "друзья", "ужин"], budget: "mid", rating: 4.6, lat: 55.7619, lon: 37.6185 },
+      { id: 14, type: "food", name: "Северяне", desc: "Современная кухня и спокойная атмосфера.", tags: ["авторская", "пара", "ужин"], budget: "high", rating: 4.7, lat: 55.7656, lon: 37.6336 },
+      { id: 15, type: "food", name: "Брусника", desc: "Быстрый и уютный формат кафе.", tags: ["завтрак", "бюджетно", "днем"], budget: "budget", rating: 4.5, lat: 55.7597, lon: 37.6031 },
+      { id: 16, type: "food", name: "J’PAN", desc: "Японский стрит-фуд и рамен.", tags: ["азиатская", "друзья", "обед"], budget: "mid", rating: 4.6, lat: 55.7574, lon: 37.6157 },
+      { id: 17, type: "food", name: "Горыныч", desc: "Большое меню и живая посадка.", tags: ["друзья", "ужин", "мясо"], budget: "mid", rating: 4.6, lat: 55.7408, lon: 37.6098 },
+      { id: 18, type: "food", name: "Coffeemania", desc: "Кофе, завтрак, работа с ноутбуком.", tags: ["кофейня", "утро", "работа"], budget: "mid", rating: 4.5, lat: 55.7518, lon: 37.6122 },
+      { id: 19, type: "food", name: "Frank by Basta", desc: "Неформальный формат и ребра.", tags: ["друзья", "вечер", "мясо"], budget: "mid", rating: 4.4, lat: 55.7633, lon: 37.6072 },
+      { id: 20, type: "food", name: "Теремок", desc: "Блины и быстрый перекус.", tags: ["быстро", "бюджетно", "обед"], budget: "budget", rating: 4.2, lat: 55.7558, lon: 37.6176 },
+      { id: 41, type: "food", name: "Сыроварня", desc: "Уютная кухня и спокойный ужин.", tags: ["ужин", "пара", "европейская"], budget: "mid", rating: 4.6, lat: 55.7508, lon: 37.5828 },
+      { id: 42, type: "food", name: "Probka", desc: "Итальянская кухня в современном формате.", tags: ["ужин", "итальянская", "праздник"], budget: "high", rating: 4.7, lat: 55.7609, lon: 37.6055 },
+      { id: 43, type: "food", name: "Remy Kitchen Bakery", desc: "Бистро с комфортной подачей.", tags: ["бранч", "пара", "друзья"], budget: "mid", rating: 4.6, lat: 55.7603, lon: 37.5941 },
+      { id: 44, type: "food", name: "Mushrooms", desc: "Гастро-формат с авторским меню.", tags: ["авторская", "ужин", "вечер"], budget: "high", rating: 4.7, lat: 55.7481, lon: 37.5818 },
+      { id: 45, type: "food", name: "Хачапури и Вино", desc: "Грузинская кухня и теплый формат.", tags: ["друзья", "ужин", "грузинская"], budget: "mid", rating: 4.5, lat: 55.7614, lon: 37.6044 },
+      { id: 46, type: "food", name: "The Greeks", desc: "Средиземноморская кухня, легкий вечер.", tags: ["ужин", "романтика", "средиземноморская"], budget: "high", rating: 4.6, lat: 55.7581, lon: 37.6111 },
+      { id: 47, type: "food", name: "Вкусно и точка", desc: "Быстрый перекус по пути.", tags: ["быстро", "бюджетно", "друзья"], budget: "budget", rating: 4.1, lat: 55.7564, lon: 37.6189 },
+      { id: 48, type: "food", name: "Skuratov Coffee", desc: "Кофе-стоп перед прогулкой.", tags: ["кофейня", "утро", "быстро"], budget: "budget", rating: 4.4, lat: 55.7526, lon: 37.5954 },
+
+      { id: 21, type: "screen", name: "Dune: Part Two", desc: "Эпичный sci-fi.", tags: ["фильм", "динамично", "фантастика"], budget: "mid", rating: 4.8 },
+      { id: 22, type: "screen", name: "Severance", desc: "Холодный интеллектуальный вайб.", tags: ["сериал", "вдумчиво", "триллер"], budget: "mid", rating: 4.9 },
+      { id: 23, type: "screen", name: "The Batman", desc: "Темный детективный супергеройский фильм.", tags: ["фильм", "детектив", "мрачно"], budget: "mid", rating: 4.7 },
+      { id: 24, type: "screen", name: "The Bear", desc: "Сериал о кухне, темпе и характере.", tags: ["сериал", "драма", "динамично"], budget: "mid", rating: 4.8 },
+      { id: 25, type: "screen", name: "Interstellar", desc: "Космос и сильная эмоциональная линия.", tags: ["фильм", "фантастика", "вдумчиво"], budget: "mid", rating: 4.9 },
+      { id: 26, type: "screen", name: "True Detective", desc: "Мрачный криминальный антологический сериал.", tags: ["сериал", "детектив", "мрачно"], budget: "mid", rating: 4.8 },
+      { id: 27, type: "screen", name: "La La Land", desc: "Романтический музыкальный фильм.", tags: ["фильм", "романтика", "легко"], budget: "mid", rating: 4.6 },
+      { id: 28, type: "screen", name: "Black Mirror", desc: "Технологичный взгляд на будущее.", tags: ["сериал", "вдумчиво", "технологии"], budget: "mid", rating: 4.7 }
+    ];
+
+    const state = {
+      query: "",
+      type: "places",
+      budget: "all",
+      sort: "score",
+      selectedTags: [],
+      favorites: [],
+      collections: { date: [], weekend: [], friends: [] },
+      activeCollection: "date",
+      userLocation: null,
+      participants: 2,
+      votes: {},
+      voteUsers: {},
+      currentUser: null,
+      selectedPlaceId: null,
+      lastWinnerId: null,
+      routeStartTime: "18:00",
+      routePlaceDuration: 90,
+      routeFoodDuration: 75,
+      widgetOrder: ["recommendations", "analytics", "favorites", "collections", "bundles", "map"]
+    };
+
+    const el = {
+      searchInput: document.getElementById("searchInput"),
+      budgetFilter: document.getElementById("budgetFilter"),
+      sortBy: document.getElementById("sortBy"),
+      modePlacesBtn: document.getElementById("modePlacesBtn"),
+      modeFoodBtn: document.getElementById("modeFoodBtn"),
+      modeScreenBtn: document.getElementById("modeScreenBtn"),
+      searchModeHint: document.getElementById("searchModeHint"),
+      budgetFilterWrap: document.getElementById("budgetFilterWrap"),
+      resultCount: document.getElementById("resultCount"),
+      tagFilters: document.getElementById("tagFilters"),
+      smartFolders: document.getElementById("smartFolders"),
+      quickChips: document.getElementById("quickChips"),
+      clearFavorites: document.getElementById("clearFavorites"),
+      nearbyBtn: document.getElementById("nearbyBtn"),
+      geoInfo: document.getElementById("geoInfo"),
+      collectionSelect: document.getElementById("collectionSelect"),
+      collectionsMeta: document.getElementById("collectionsMeta"),
+      activeCollectionName: document.getElementById("activeCollectionName"),
+      collectionItems: document.getElementById("collectionItems"),
+      participantsInput: document.getElementById("participantsInput"),
+      votesHint: document.getElementById("votesHint"),
+      commandPalette: document.getElementById("commandPalette"),
+      commandInput: document.getElementById("commandInput"),
+      commandList: document.getElementById("commandList"),
+      sidebar: document.getElementById("sidebar"),
+      mainContent: document.getElementById("mainContent"),
+      widgets: document.getElementById("widgets"),
+      analyticsPanels: document.getElementById("analyticsPanels"),
+      funnelStats: document.getElementById("funnelStats"),
+      topCompare: document.getElementById("topCompare"),
+      tagHeat: document.getElementById("tagHeat"),
+      groupInsights: document.getElementById("groupInsights"),
+      buildBundleBtn: document.getElementById("buildBundleBtn"),
+      bundleHint: document.getElementById("bundleHint"),
+      bundleList: document.getElementById("bundleList"),
+      routeStartTime: document.getElementById("routeStartTime"),
+      routePlaceDuration: document.getElementById("routePlaceDuration"),
+      routeFoodDuration: document.getElementById("routeFoodDuration"),
+      buildRouteBtn: document.getElementById("buildRouteBtn"),
+      routePlan: document.getElementById("routePlan"),
+      fitMapBtn: document.getElementById("fitMapBtn"),
+      detailsModal: document.getElementById("detailsModal"),
+      detailsTitle: document.getElementById("detailsTitle"),
+      detailsSubtitle: document.getElementById("detailsSubtitle"),
+      detailsDesc: document.getElementById("detailsDesc"),
+      detailsTags: document.getElementById("detailsTags"),
+      detailsSearchLink: document.getElementById("detailsSearchLink"),
+      detailsSaveBtn: document.getElementById("detailsSaveBtn"),
+      closeDetailsBtn: document.getElementById("closeDetailsBtn"),
+      onboarding: document.getElementById("onboarding"),
+      closeOnboardingBtn: document.getElementById("closeOnboardingBtn"),
+      toasts: document.getElementById("toasts"),
+      winnerOverlay: document.getElementById("winnerOverlay"),
+      winnerImage: document.getElementById("winnerImage"),
+      winnerName: document.getElementById("winnerName"),
+      winnerVotes: document.getElementById("winnerVotes"),
+      closeWinnerBtn: document.getElementById("closeWinnerBtn"),
+      fireworks: document.getElementById("fireworks"),
+      authStatus: document.getElementById("authStatus"),
+      authBtn: document.getElementById("authBtn"),
+      authModal: document.getElementById("authModal"),
+      authLoginInput: document.getElementById("authLoginInput"),
+      authPassInput: document.getElementById("authPassInput"),
+      authLoginBtn: document.getElementById("authLoginBtn"),
+      authRegisterBtn: document.getElementById("authRegisterBtn"),
+      authCloseBtn: document.getElementById("authCloseBtn"),
+      clearLocalDataBtn: document.getElementById("clearLocalDataBtn"),
+      map: document.getElementById("map")
+    };
+
+    let authUsers = {};
+    let mapPoints = [];
+    let map = null;
+    let mapMarkers = [];
+    let cloudRef = null;
+    let cloudEnabled = false;
+    let cloudApplying = false;
+    let cloudReadyToastShown = false;
+
+    function hardResetLocalData() {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(AUTH_USERS_KEY);
+      localStorage.removeItem(ONBOARDING_KEY);
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        Object.assign(state, JSON.parse(raw));
+      } catch {}
+    }
+
+    function loadAuthUsers() {
+      try {
+        const raw = localStorage.getItem(AUTH_USERS_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        authUsers = {};
+        Object.entries(parsed).forEach(([key, value]) => {
+          if (typeof value !== "string") return;
+          const safeKey = key.startsWith("user-") ? key : anonymizeUser(String(key).toLowerCase());
+          authUsers[safeKey] = value;
+        });
+        // Перезаписываем в приватном формате: только userId -> password.
+        saveAuthUsers();
+      } catch {
+        authUsers = {};
+      }
+    }
+
+    function saveAuthUsers() {
+      localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(authUsers));
+    }
+
+    function hasFirebaseConfig() {
+      return Object.values(FIREBASE_CONFIG).every(v => typeof v === "string" && v.trim().length > 0);
+    }
+
+    function initCloudSync() {
+      if (!hasFirebaseConfig()) return;
+      if (typeof firebase === "undefined" || !firebase?.database) return;
+      try {
+        if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+        cloudRef = firebase.database().ref(`kudago/${CLOUD_ROOM}`);
+        cloudEnabled = true;
+        cloudRef.on("value", (snapshot) => {
+          const remote = snapshot.val();
+          if (!remote || typeof remote !== "object") return;
+          cloudApplying = true;
+          if (remote.votes && typeof remote.votes === "object") state.votes = remote.votes;
+          if (remote.voteUsers && typeof remote.voteUsers === "object") state.voteUsers = remote.voteUsers;
+          if (typeof remote.participants === "number" && remote.participants >= 2) state.participants = remote.participants;
+          if (Array.isArray(remote.favorites)) {
+            state.favorites = remote.favorites.map(Number).filter(id => !Number.isNaN(id));
+          }
+          if (remote.collections && typeof remote.collections === "object") {
+            ["date", "weekend", "friends"].forEach((k) => {
+              if (Array.isArray(remote.collections[k])) {
+                state.collections[k] = remote.collections[k].map(Number).filter(id => !Number.isNaN(id));
+              }
+            });
+          }
+          if ("selectedPlaceId" in remote) {
+            state.selectedPlaceId = typeof remote.selectedPlaceId === "number" && !Number.isNaN(remote.selectedPlaceId)
+              ? remote.selectedPlaceId
+              : null;
+          }
+          if ("lastWinnerId" in remote) {
+            state.lastWinnerId = typeof remote.lastWinnerId === "number" && !Number.isNaN(remote.lastWinnerId)
+              ? remote.lastWinnerId
+              : null;
+          }
+          if (typeof remote.updatedAt === "number") {
+            // no-op: timestamp marker to avoid stale write races
+          }
+          cloudApplying = false;
+          saveState();
+          syncControls();
+          update();
+          if (!cloudReadyToastShown) {
+            cloudReadyToastShown = true;
+            toast("облачная синхронизация включена");
+          }
+        });
+      } catch (e) {
+        console.error("Firebase init failed", e);
+      }
+    }
+
+    function pushCloudState() {
+      if (!cloudEnabled || !cloudRef || cloudApplying) return;
+      try {
+        cloudRef.set({
+          votes: state.votes,
+          voteUsers: state.voteUsers,
+          participants: state.participants,
+          favorites: state.favorites,
+          collections: state.collections,
+          selectedPlaceId: state.selectedPlaceId,
+          lastWinnerId: state.lastWinnerId,
+          updatedAt: Date.now()
+        });
+      } catch (e) {
+        console.error("Firebase sync failed", e);
+      }
+    }
+
+    function normalizeState() {
+      const validType = ["places", "food", "screen"];
+      const validBudget = ["all", "budget", "mid", "high"];
+      const validSort = ["score", "name", "rating", "distance"];
+
+      if (!validType.includes(state.type)) state.type = "places";
+      if (!validBudget.includes(state.budget)) state.budget = "all";
+      if (!validSort.includes(state.sort)) state.sort = "score";
+      if (typeof state.query !== "string") state.query = "";
+      if (!Array.isArray(state.selectedTags)) state.selectedTags = [];
+      if (!Array.isArray(state.favorites)) state.favorites = [];
+      if (!state.collections || typeof state.collections !== "object") state.collections = { date: [], weekend: [], friends: [] };
+      ["date", "weekend", "friends"].forEach(k => { if (!Array.isArray(state.collections[k])) state.collections[k] = []; });
+      if (!["date", "weekend", "friends"].includes(state.activeCollection)) state.activeCollection = "date";
+      if (state.userLocation && (typeof state.userLocation.lat !== "number" || typeof state.userLocation.lon !== "number")) state.userLocation = null;
+      if (typeof state.participants !== "number" || state.participants < 2) state.participants = 2;
+      if (!state.votes || typeof state.votes !== "object") state.votes = {};
+      if (!state.voteUsers || typeof state.voteUsers !== "object") state.voteUsers = {};
+      Object.keys(state.votes).forEach((id) => {
+        if (!Array.isArray(state.voteUsers[id])) state.voteUsers[id] = [];
+      });
+      if (typeof state.currentUser !== "string") state.currentUser = null;
+      if (state.currentUser === "") state.currentUser = null;
+      if (typeof state.currentUser === "string" && state.currentUser) {
+        state.currentUser = state.currentUser.startsWith("user-") ? state.currentUser : anonymizeUser(state.currentUser);
+      }
+      Object.keys(state.voteUsers).forEach((id) => {
+        const users = Array.isArray(state.voteUsers[id]) ? state.voteUsers[id] : [];
+        const mapped = [...new Set(users.filter(Boolean).map(u => (String(u).startsWith("user-") ? String(u) : anonymizeUser(String(u)))))];
+        state.voteUsers[id] = mapped;
+      });
+      if (!/^\d{2}:\d{2}$/.test(state.routeStartTime || "")) state.routeStartTime = "18:00";
+      if (typeof state.routePlaceDuration !== "number" || !Number.isFinite(state.routePlaceDuration)) state.routePlaceDuration = 90;
+      if (typeof state.routeFoodDuration !== "number" || !Number.isFinite(state.routeFoodDuration)) state.routeFoodDuration = 75;
+      state.routePlaceDuration = Math.max(30, state.routePlaceDuration);
+      state.routeFoodDuration = Math.max(30, state.routeFoodDuration);
+      if (!Array.isArray(state.widgetOrder) || !state.widgetOrder.length) {
+        state.widgetOrder = ["recommendations", "analytics", "favorites", "collections", "bundles", "map"];
+      }
+      const widgetDefaults = ["recommendations", "analytics", "favorites", "collections", "bundles", "map"];
+      widgetDefaults.forEach(id => {
+        if (!state.widgetOrder.includes(id)) state.widgetOrder.push(id);
+      });
+    }
+
+    function toast(msg) {
+      const n = document.createElement("div");
+      n.className = "toast";
+      n.textContent = msg;
+      el.toasts.appendChild(n);
+      setTimeout(() => n.remove(), 1800);
+    }
+
+    function anonymizeUser(login) {
+      if (!login || typeof login !== "string") return "user";
+      if (login.startsWith("user-")) return login;
+      let hash = 0;
+      for (let i = 0; i < login.length; i += 1) {
+        hash = ((hash << 5) - hash + login.charCodeAt(i)) | 0;
+      }
+      const short = Math.abs(hash).toString(16).slice(0, 4).padStart(4, "0");
+      return `user-${short}`;
+    }
+
+    function updateAuthStatus() {
+      if (state.currentUser) {
+        el.authStatus.textContent = anonymizeUser(state.currentUser);
+        el.authBtn.textContent = "выйти";
+      } else {
+        el.authStatus.textContent = "гость";
+        el.authBtn.textContent = "войти";
+      }
+    }
+
+    function openAuthModal() {
+      el.authLoginInput.value = "";
+      el.authPassInput.value = "";
+      el.authModal.classList.add("show");
+      setTimeout(() => el.authLoginInput.focus(), 0);
+    }
+
+    function closeAuthModal() {
+      el.authModal.classList.remove("show");
+    }
+
+    function authLogin() {
+      const login = el.authLoginInput.value.trim().toLowerCase();
+      const pass = el.authPassInput.value;
+      if (!login || !pass) {
+        toast("введи логин и пароль");
+        return;
+      }
+      const userId = anonymizeUser(login);
+      if (!authUsers[userId] || authUsers[userId] !== pass) {
+        toast("неверный логин или пароль");
+        return;
+      }
+      state.currentUser = userId;
+      saveState();
+      updateAuthStatus();
+      closeAuthModal();
+      toast("вход выполнен");
+      update();
+    }
+
+    function authRegister() {
+      const login = el.authLoginInput.value.trim().toLowerCase();
+      const pass = el.authPassInput.value;
+      if (!login || !pass) {
+        toast("введи логин и пароль");
+        return;
+      }
+      const userId = anonymizeUser(login);
+      if (authUsers[userId]) {
+        toast("такой логин уже есть");
+        return;
+      }
+      authUsers[userId] = pass;
+      saveAuthUsers();
+      state.currentUser = userId;
+      saveState();
+      updateAuthStatus();
+      closeAuthModal();
+      toast("аккаунт создан");
+      update();
+    }
+
+    function majorityThreshold() {
+      return Math.floor(state.participants / 2) + 1;
+    }
+
+    function updateVotesHint() {
+      el.votesHint.textContent = `для победы нужно: ${majorityThreshold()} голоса из ${state.participants}`;
+    }
+
+    function placeImageUrl(name) {
+      return `https://source.unsplash.com/1200x700/?${encodeURIComponent(name + " moscow city")}`;
+    }
+
+    function winnerFallbackImage(name) {
+      return `https://placehold.co/1200x700/050508/00ffcc?text=${encodeURIComponent(name)}`;
+    }
+
+    function launchFireworks() {
+      el.fireworks.innerHTML = "";
+      for (let i = 0; i < 22; i += 1) {
+        const s = document.createElement("span");
+        s.className = "spark";
+        s.style.left = `${20 + Math.random() * 60}%`;
+        s.style.top = `${20 + Math.random() * 60}%`;
+        s.style.setProperty("--tx", `${(Math.random() - 0.5) * 180}px`);
+        s.style.setProperty("--ty", `${(Math.random() - 0.5) * 160}px`);
+        s.style.animationDelay = `${Math.random() * 0.4}s`;
+        el.fireworks.appendChild(s);
+      }
+    }
+
+    function checkVoteWinner() {
+      const entries = Object.entries(state.votes);
+      if (!entries.length) return;
+      const [winnerId, winnerVotes] = entries.sort((a, b) => b[1] - a[1])[0];
+      if (winnerVotes < 2) return;
+      if (winnerVotes < majorityThreshold()) return;
+      const item = BASE_DATA.find(x => x.id === Number(winnerId));
+      if (!item) return;
+      state.lastWinnerId = item.id;
+      if (item.type === "places") state.selectedPlaceId = item.id;
+      el.winnerName.textContent = item.name;
+      el.winnerVotes.textContent = `голосов: ${winnerVotes} / ${state.participants}`;
+      const primary = placeImageUrl(item.name);
+      const fallback = winnerFallbackImage(item.name);
+      el.winnerImage.onerror = () => { el.winnerImage.src = fallback; };
+      el.winnerImage.src = primary;
+      launchFireworks();
+      el.winnerOverlay.classList.add("show");
+      toast("большинство выбрало место");
+    }
+
+    function castVote(id) {
+      if (!state.currentUser) {
+        openAuthModal();
+        toast("сначала войди");
+        return;
+      }
+      const key = String(id);
+      if (!Array.isArray(state.voteUsers[key])) state.voteUsers[key] = [];
+      const already = state.voteUsers[key].includes(state.currentUser);
+      if (already) {
+        state.voteUsers[key] = state.voteUsers[key].filter(u => u !== state.currentUser);
+        state.votes[key] = Math.max(0, (state.votes[key] || 0) - 1);
+        if (state.votes[key] === 0) delete state.votes[key];
+        if (state.voteUsers[key].length === 0) delete state.voteUsers[key];
+        toast("голос снят");
+      } else {
+        // Один пользователь может держать только один активный голос.
+        Object.keys(state.voteUsers).forEach((voteId) => {
+          const users = state.voteUsers[voteId];
+          if (!Array.isArray(users) || !users.includes(state.currentUser)) return;
+          state.voteUsers[voteId] = users.filter(u => u !== state.currentUser);
+          state.votes[voteId] = Math.max(0, (state.votes[voteId] || 0) - 1);
+          if (state.votes[voteId] === 0) delete state.votes[voteId];
+          if (state.voteUsers[voteId].length === 0) delete state.voteUsers[voteId];
+        });
+        state.voteUsers[key].push(state.currentUser);
+        state.votes[key] = (state.votes[key] || 0) + 1;
+        toast("голос засчитан");
+      }
+      saveState();
+      pushCloudState();
+      checkVoteWinner();
+      pushCloudState();
+      update();
+    }
+
+    function createTrace(x, y) {
+      const angle = (Math.random() * 70) - 35;
+      const len = 46 + Math.random() * 60;
+      const line = document.createElement("span");
+      line.className = "trace-line";
+      line.style.left = `${x}px`;
+      line.style.top = `${y}px`;
+      line.style.width = `${len}px`;
+      line.style.transform = `rotate(${angle}deg)`;
+      traceLayer.appendChild(line);
+      setTimeout(() => line.remove(), 420);
+    }
+
+    function distKm(a, b) {
+      if (!a || !b) return null;
+      if (![a.lat, a.lon, b.lat, b.lon].every(v => typeof v === "number" && Number.isFinite(v))) return null;
+      const R = 6371;
+      const dLat = (b.lat - a.lat) * Math.PI / 180;
+      const dLon = (b.lon - a.lon) * Math.PI / 180;
+      const la1 = a.lat * Math.PI / 180;
+      const la2 = b.lat * Math.PI / 180;
+      const x = Math.sin(dLat / 2) ** 2 + Math.sin(dLon / 2) ** 2 * Math.cos(la1) * Math.cos(la2);
+      return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+    }
+
+    function createHeartCell(idx) {
+      const cell = document.createElement("button");
+      cell.className = "heart-cell";
+      cell.type = "button";
+      const phase = Math.random() * 4;
+      const size = 16 + Math.round(Math.random() * 16);
+      const left = Math.random() * 100;
+      const top = Math.random() * 100;
+      const duration = 15 + Math.random() * 15;
+      const heart = document.createElement("span");
+      heart.className = "heart-outline";
+      heart.style.animationDelay = `-${phase}s`;
+      heart.style.width = `${size}px`;
+      heart.style.height = `${size}px`;
+      heart.style.left = `${Math.max(0, (24 - size) / 2)}px`;
+      heart.style.top = `${Math.max(0, (24 - size) / 2)}px`;
+      cell.appendChild(heart);
+      cell.style.left = `${left}%`;
+      cell.style.top = `${top}%`;
+      cell.style.setProperty("--drift-duration", `${duration}s`);
+      cell.style.setProperty("--drift-delay", `-${Math.random() * duration}s`);
+      cell.addEventListener("click", () => {
+        const rect = cell.getBoundingClientRect();
+        createTrace(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      });
+      return cell;
+    }
+
+    function buildHeartsGrid() {
+      heartsGrid.innerHTML = "";
+      const isMobile = window.matchMedia("(max-width: 900px)").matches;
+      const count = isMobile ? 34 : 72;
+      for (let i = 0; i < count; i += 1) heartsGrid.appendChild(createHeartCell(i));
+    }
+
+    function scoreItem(item) {
+      const q = state.query.trim().toLowerCase();
+      const hay = `${item.name} ${item.desc} ${item.tags.join(" ")}`.toLowerCase();
+      let score = q ? (hay.includes(q) ? 3 : 0) : 1;
+      score += state.selectedTags.filter(t => item.tags.includes(t)).length;
+      if (state.userLocation && item.lat && item.lon) {
+        const d = distKm(state.userLocation, { lat: item.lat, lon: item.lon });
+        if (d !== null) score += Math.max(0, 2 - d / 5);
+      }
+      return score + item.rating / 5;
+    }
+
+    function getFilteredData() {
+      let list = [...BASE_DATA];
+      if (state.type !== "all") list = list.filter(i => i.type === state.type);
+      if (state.budget !== "all") list = list.filter(i => i.budget === state.budget);
+      if (state.query) {
+        const q = state.query.toLowerCase();
+        list = list.filter(i => `${i.name} ${i.desc} ${(i.tags || []).join(" ")}`.toLowerCase().includes(q));
+      }
+      list = list.map(i => ({ ...i, score: scoreItem(i) }));
+      if (state.sort === "name") list.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+      if (state.sort === "rating") list.sort((a, b) => b.rating - a.rating);
+      if (state.sort === "distance" && state.userLocation) {
+        list.sort((a, b) => (distKm(state.userLocation, a) ?? 1e9) - (distKm(state.userLocation, b) ?? 1e9));
+      }
+      if (state.sort === "score") list.sort((a, b) => b.score - a.score);
+      return list;
+    }
+
+    function renderQuickChips() {
+      const chipsByType = {
+        places: [
+          { label: "с детьми", apply: () => { state.query = "семья"; } },
+          { label: "бюджетно", apply: () => { state.budget = "budget"; } },
+          { label: "на вечер", apply: () => { state.query = "вечер"; } },
+          { label: "в помещении", apply: () => { state.query = "музей"; } }
+        ],
+        food: [
+          { label: "ужин", apply: () => { state.query = "ужин"; } },
+          { label: "кофейня", apply: () => { state.query = "кофейня"; } },
+          { label: "бюджетно", apply: () => { state.budget = "budget"; } },
+          { label: "для пары", apply: () => { state.query = "пара"; } }
+        ],
+        screen: [
+          { label: "фильм", apply: () => { state.query = "фильм"; } },
+          { label: "сериал", apply: () => { state.query = "сериал"; } },
+          { label: "динамично", apply: () => { state.query = "динамично"; } },
+          { label: "вдумчиво", apply: () => { state.query = "вдумчиво"; } }
+        ]
+      };
+      const chips = chipsByType[state.type] || chipsByType.places;
+      el.quickChips.innerHTML = chips.map((c, i) => `<button data-chip="${i}" class="btn-neon text-[11px] px-2 py-1">${c.label}</button>`).join("");
+      el.quickChips.querySelectorAll("button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          chips[Number(btn.dataset.chip)].apply();
+          syncControls();
+          update();
+          toast("быстрый фильтр применен");
+        });
+      });
+    }
+
+    function renderTagFilters(data) {
+      const tags = [...new Set(data.flatMap(i => i.tags))].slice(0, 10);
+      el.tagFilters.innerHTML = tags.map(tag => `<button data-tag="${tag}" class="btn-neon text-[11px] px-2 py-1 ${state.selectedTags.includes(tag) ? "bg-[#00FFCC] text-black" : ""}">${tag}</button>`).join("");
+      el.tagFilters.querySelectorAll("button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const tag = btn.dataset.tag;
+          state.selectedTags = state.selectedTags.includes(tag) ? state.selectedTags.filter(t => t !== tag) : [...state.selectedTags, tag];
+          update();
+        });
+      });
+    }
+
+    function setSearchMode(type) {
+      state.type = type;
+      state.query = "";
+      state.selectedTags = [];
+      if (type === "screen") state.budget = "all";
+      syncControls();
+      renderQuickChips();
+      update();
+    }
+
+    function renderResults(data) {
+      el.resultCount.textContent = String(data.length);
+      if (!data.length) {
+        resultsEl.innerHTML = `
+          <div class="card p-3">
+            <div class="text-[14px] text-[#888]">ничего не найдено по текущим фильтрам</div>
+            <div class="text-[12px] text-[#888] mt-2">попробуй: зоопарк / парк / романтика</div>
+            <button id="resetFiltersBtn" class="btn-neon text-[11px] px-2 py-1 mt-2">сбросить фильтры</button>
+          </div>
+        `;
+        const resetBtn = document.getElementById("resetFiltersBtn");
+        if (resetBtn) {
+          resetBtn.addEventListener("click", () => {
+            state.query = "";
+            state.type = "places";
+            state.budget = "all";
+            state.sort = "score";
+            state.selectedTags = [];
+            syncControls();
+            update();
+          });
+        }
+        return;
+      }
+      resultsEl.innerHTML = data.map(item => `
+        <div class="card p-3">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <button data-open="${item.id}" class="open-detail text-[18px] font-bold text-left underline-offset-4 hover:underline">${item.name}</button>
+              <div class="text-[14px] text-[#888]">${item.desc}</div>
+            </div>
+            <span class="mono text-[#00FFCC]">${item.rating.toFixed(1)}</span>
+          </div>
+          <div class="mt-2 flex flex-wrap gap-1">${item.tags.map(t => `<span class="mono text-[11px] text-[#888] border border-[#222] px-2 py-0.5">${t}</span>`).join("")}</div>
+          <div class="mt-2 flex gap-2">
+            <button data-fav="${item.id}" class="fav-btn btn-neon text-[11px] px-2 py-1">${state.favorites.includes(item.id) ? "убрать из избранного" : "в избранное"}</button>
+            <button data-col="${item.id}" class="col-btn btn-neon text-[11px] px-2 py-1">в подборку</button>
+            <button data-vote="${item.id}" class="vote-btn btn-neon text-[11px] px-2 py-1">${(state.currentUser && Array.isArray(state.voteUsers[String(item.id)]) && state.voteUsers[String(item.id)].includes(state.currentUser)) ? "не хочу сюда" : "сюда хочу!"} (${state.votes[item.id] || 0})</button>
+            <a class="btn-neon text-[11px] px-2 py-1" target="_blank" rel="noopener" href="https://yandex.ru/search/?text=${encodeURIComponent(item.name + " Москва")}">в поиск</a>
+          </div>
+        </div>
+      `).join("");
+      resultsEl.querySelectorAll(".open-detail").forEach(btn => {
+        btn.addEventListener("click", () => openDetails(Number(btn.dataset.open)));
+      });
+      resultsEl.querySelectorAll(".fav-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = Number(btn.dataset.fav);
+          state.favorites = state.favorites.includes(id) ? state.favorites.filter(x => x !== id) : [...state.favorites, id];
+          toast(state.favorites.includes(id) ? "добавлено в избранное" : "удалено из избранного");
+          saveState();
+          pushCloudState();
+          update();
+        });
+      });
+      resultsEl.querySelectorAll(".col-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = Number(btn.dataset.col);
+          const list = state.collections[state.activeCollection];
+          if (!list.includes(id)) list.push(id);
+          toast("добавлено в подборку");
+          saveState();
+          pushCloudState();
+          update();
+        });
+      });
+      resultsEl.querySelectorAll(".vote-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          castVote(Number(btn.dataset.vote));
+        });
+      });
+    }
+
+    function renderFavorites() {
+      const list = BASE_DATA.filter(i => state.favorites.includes(i.id));
+      favoritesEl.innerHTML = list.length
+        ? list.map(i => `
+          <div class="card p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-[16px] font-bold">${i.name}</div>
+                <div class="text-[13px] text-[#888] mt-1">${i.desc}</div>
+              </div>
+              <span class="mono text-[#00FFCC] text-[12px]">${i.rating.toFixed(1)}</span>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-1">
+              ${(i.tags || []).slice(0, 3).map(t => `<span class="mono text-[10px] text-[#888] border border-[#222] px-2 py-0.5">${t}</span>`).join("")}
+            </div>
+            <div class="mt-3 flex gap-2">
+              <button data-fav-remove="${i.id}" class="btn-neon text-[11px] px-2 py-1">убрать</button>
+              <button data-open-detail="${i.id}" class="btn-neon text-[11px] px-2 py-1">детали</button>
+            </div>
+          </div>
+        `).join("")
+        : `<div class="card p-3"><div class="text-[#888] mono text-[12px]">пока пусто — добавь места из блока рекомендаций</div></div>`;
+
+      favoritesEl.querySelectorAll("[data-fav-remove]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = Number(btn.dataset.favRemove);
+          state.favorites = state.favorites.filter(x => x !== id);
+          toast("удалено из избранного");
+          saveState();
+          pushCloudState();
+          update();
+        });
+      });
+
+      favoritesEl.querySelectorAll("[data-open-detail]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          openDetails(Number(btn.dataset.openDetail));
+        });
+      });
+    }
+
+    function renderSmartFolders() {
+      const folders = [
+        { name: "романтика", fn: i => i.tags.includes("романтика") || i.tags.includes("пара") },
+        { name: "топ рейтинг", fn: i => i.rating >= 4.8 },
+        { name: "бюджет", fn: i => i.budget === "budget" }
+      ];
+      el.smartFolders.innerHTML = folders.map(f => `<button data-folder="${f.name}" class="btn-neon w-full text-left text-[11px]">${f.name} <span class="mono text-[#888]">(${BASE_DATA.filter(f.fn).length})</span></button>`).join("");
+      el.smartFolders.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
+        state.query = btn.dataset.folder;
+        el.searchInput.value = state.query;
+        update();
+      }));
+    }
+
+    function collectionTitle(key) {
+      return key === "date" ? "для свидания" : key === "weekend" ? "на выходные" : "с друзьями";
+    }
+
+    function renderCollections() {
+      const key = state.activeCollection;
+      const ids = state.collections[key] || [];
+      const items = BASE_DATA.filter(i => ids.includes(i.id));
+      el.activeCollectionName.textContent = collectionTitle(key);
+      el.collectionsMeta.textContent = `для свидания: ${state.collections.date.length} | на выходные: ${state.collections.weekend.length} | с друзьями: ${state.collections.friends.length}`;
+      el.collectionItems.innerHTML = items.length
+        ? items.map(i => `<div class="card p-3"><div class="text-[16px]">${i.name}</div><button data-del="${i.id}" class="btn-neon text-[11px] px-2 py-1 mt-2">убрать</button></div>`).join("")
+        : `<div class="text-[#888] mono text-[12px]">в этой подборке пока пусто</div>`;
+      el.collectionItems.querySelectorAll("[data-del]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = Number(btn.dataset.del);
+          state.collections[key] = state.collections[key].filter(x => x !== id);
+          toast("удалено из подборки");
+          saveState();
+          pushCloudState();
+          update();
+        });
+      });
+    }
+
+    function sectionLabel(type) {
+      if (type === "places") return "места";
+      if (type === "food") return "покушать";
+      return "фильм/сериал";
+    }
+
+    function sectionStats(type) {
+      const all = BASE_DATA.filter(i => i.type === type);
+      let matched = all;
+      if (state.query) {
+        const q = state.query.toLowerCase();
+        matched = matched.filter(i => `${i.name} ${i.desc} ${(i.tags || []).join(" ")}`.toLowerCase().includes(q));
+      }
+      if (state.budget !== "all" && type !== "screen") {
+        matched = matched.filter(i => i.budget === state.budget);
+      }
+      const avg = matched.length ? (matched.reduce((s, i) => s + (i.rating || 0), 0) / matched.length).toFixed(1) : "0.0";
+      const tagMap = {};
+      matched.forEach(i => (i.tags || []).forEach(t => { tagMap[t] = (tagMap[t] || 0) + 1; }));
+      const topTag = Object.entries(tagMap).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+      const votes = matched.reduce((s, i) => s + (state.votes[i.id] || state.votes[String(i.id)] || 0), 0);
+      return { total: all.length, matched: matched.length, avg, topTag, votes };
+    }
+
+    function renderAnalytics() {
+      const types = ["places", "food", "screen"];
+      el.analyticsPanels.innerHTML = types.map(type => {
+        const s = sectionStats(type);
+        const active = state.type === type;
+        return `
+          <div class="card p-3 ${active ? "border-[#00FFCC]" : ""}">
+            <div class="flex items-center justify-between">
+              <div class="text-[16px] font-bold">${sectionLabel(type)}</div>
+              <button data-switch-type="${type}" class="btn-neon text-[10px] px-2 py-1">открыть</button>
+            </div>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <div class="hint">в базе: <span class="mono text-[#00FFCC]">${s.total}</span></div>
+              <div class="hint">по фильтру: <span class="mono text-[#00FFCC]">${s.matched}</span></div>
+              <div class="hint">ср. рейтинг: <span class="mono text-[#00FFCC]">${s.avg}</span></div>
+              <div class="hint">топ тег: <span class="mono text-[#00FFCC]">${s.topTag}</span></div>
+            </div>
+            <div class="hint mt-2">голосов за раздел: <span class="mono text-[#00FFCC]">${s.votes}</span></div>
+          </div>
+        `;
+      }).join("");
+      el.analyticsPanels.querySelectorAll("[data-switch-type]").forEach(btn => {
+        btn.addEventListener("click", () => setSearchMode(btn.dataset.switchType));
+      });
+      renderAdvancedAnalytics();
+    }
+
+    function renderAdvancedAnalytics() {
+      const all = BASE_DATA.length;
+      const typeFiltered = BASE_DATA.filter(i => i.type === state.type).length;
+      const afterBudget = state.type === "screen" || state.budget === "all"
+        ? typeFiltered
+        : BASE_DATA.filter(i => i.type === state.type && i.budget === state.budget).length;
+      const finalList = getFilteredData().length;
+      const conversion = afterBudget ? Math.round((finalList / afterBudget) * 100) : 0;
+      el.funnelStats.innerHTML = `
+        <div class="metric">в базе: <span class="text-[#00ffcc]">${all}</span></div>
+        <div class="metric">в разделе: <span class="text-[#00ffcc]">${typeFiltered}</span></div>
+        <div class="metric">после фильтров: <span class="text-[#00ffcc]">${afterBudget}</span></div>
+        <div class="metric">финал: <span class="text-[#00ffcc]">${finalList}</span> (${conversion}%)</div>
+      `;
+
+      const top3 = getFilteredData().slice(0, 3);
+      el.topCompare.innerHTML = top3.length ? top3.map((i, idx) => {
+        const votes = state.votes[String(i.id)] || 0;
+        const d = state.userLocation ? distKm(state.userLocation, i) : null;
+        return `<div class="card p-2">
+          <div class="mono text-[11px] text-[#888]">#${idx + 1}</div>
+          <div class="text-[14px]">${i.name}</div>
+          <div class="hint">рейтинг ${i.rating.toFixed(1)} | голосов ${votes}${d ? ` | ${d.toFixed(1)} км` : ""}</div>
+        </div>`;
+      }).join("") : `<div class="hint">недостаточно данных для сравнения</div>`;
+
+      const tagCounter = {};
+      getFilteredData().forEach(i => (i.tags || []).forEach(t => { tagCounter[t] = (tagCounter[t] || 0) + 1; }));
+      const tagPairs = Object.entries(tagCounter).sort((a, b) => b[1] - a[1]).slice(0, 6);
+      const maxTag = tagPairs[0]?.[1] || 1;
+      el.tagHeat.innerHTML = tagPairs.length ? tagPairs.map(([tag, count]) => `
+        <div>
+          <div class="flex items-center justify-between mono text-[11px] text-[#888]"><span>${tag}</span><span>${count}</span></div>
+          <div class="tag-bar"><span style="width:${Math.round((count / maxTag) * 100)}%"></span></div>
+        </div>
+      `).join("") : `<div class="hint">теги появятся после фильтрации</div>`;
+
+      const voterStats = {};
+      Object.entries(state.voteUsers).forEach(([id, users]) => {
+        (users || []).forEach(user => {
+          if (!voterStats[user]) voterStats[user] = { votes: 0, ids: new Set() };
+          voterStats[user].votes += 1;
+          voterStats[user].ids.add(id);
+        });
+      });
+      const users = Object.entries(voterStats).map(([u, s]) => ({ user: u, votes: s.votes, uniq: s.ids.size }));
+      const sortedUsers = users.sort((a, b) => b.votes - a.votes);
+      const topUser = sortedUsers[0];
+      const consensus = (() => {
+        const votedItems = Object.values(state.voteUsers).filter(v => Array.isArray(v) && v.length);
+        if (!votedItems.length || state.participants <= 1) return 0;
+        const avg = votedItems.reduce((sum, arr) => sum + (arr.length / state.participants), 0) / votedItems.length;
+        return Math.round(avg * 100);
+      })();
+      const leader = Object.entries(state.votes).sort((a, b) => b[1] - a[1])[0];
+      const remaining = Math.max(0, majorityThreshold() - (leader?.[1] || 0));
+      el.groupInsights.innerHTML = `
+        <div class="metric">индекс согласия: <span class="text-[#00ffcc]">${consensus}%</span></div>
+        <div class="metric">активный участник: <span class="text-[#00ffcc]">${topUser ? `${anonymizeUser(topUser.user)} (${topUser.votes})` : "—"}</span></div>
+        <div class="metric">прогноз победителя: <span class="text-[#00ffcc]">${leader ? (BASE_DATA.find(i => i.id === Number(leader[0]))?.name || "—") : "—"}</span></div>
+        <div class="metric">до большинства лидеру: <span class="text-[#00ffcc]">${remaining}</span></div>
+      `;
+      renderBundles();
+    }
+
+    function getSelectedPlace() {
+      if (state.selectedPlaceId) {
+        const byDetails = BASE_DATA.find(i => i.id === state.selectedPlaceId && i.type === "places");
+        if (byDetails) return byDetails;
+      }
+      if (state.lastWinnerId) {
+        const byWinner = BASE_DATA.find(i => i.id === state.lastWinnerId && i.type === "places");
+        if (byWinner) return byWinner;
+      }
+      return null;
+    }
+
+    function recommendFoodForPlace(place) {
+      if (!place) return [];
+      const foods = BASE_DATA.filter(i => i.type === "food").map(f => {
+        const d = distKm(place, f) ?? 999;
+        const budgetMatch = place.budget && f.budget === place.budget ? 0.6 : 0;
+        const vibeMatch = (f.tags || []).some(t => (place.tags || []).includes(t)) ? 0.5 : 0;
+        const score = (f.rating / 5) + budgetMatch + vibeMatch + Math.max(0, 2 - d / 3);
+        return { ...f, chainDistance: d, chainScore: score };
+      });
+      return foods.sort((a, b) => b.chainScore - a.chainScore).slice(0, 3);
+    }
+
+    function recommendScreenForBundle(place, food) {
+      const list = BASE_DATA.filter(i => i.type === "screen").map(s => {
+        const placeTagMatch = (s.tags || []).some(t => (place.tags || []).includes(t)) ? 0.5 : 0;
+        const foodTagMatch = (s.tags || []).some(t => (food.tags || []).includes(t)) ? 0.4 : 0;
+        const calmBoost = (food.tags || []).includes("пара") && (s.tags || []).includes("романтика") ? 0.4 : 0;
+        const score = (s.rating / 5) + placeTagMatch + foodTagMatch + calmBoost;
+        return { ...s, routeScore: score };
+      });
+      return list.sort((a, b) => b.routeScore - a.routeScore)[0] || null;
+    }
+
+    function addMinutes(timeStr, minutes) {
+      const [h, m] = timeStr.split(":").map(Number);
+      const total = (h * 60 + m + minutes) % (24 * 60);
+      const hh = String(Math.floor(total / 60)).padStart(2, "0");
+      const mm = String(total % 60).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+
+    function renderRoutePlan() {
+      const place = getSelectedPlace();
+      if (!place) {
+        el.routePlan.innerHTML = `<div class="hint">для маршрута сначала выбери базовое место</div>`;
+        return;
+      }
+      const food = recommendFoodForPlace(place)[0];
+      if (!food) {
+        el.routePlan.innerHTML = `<div class="hint">не удалось подобрать ужин</div>`;
+        return;
+      }
+      const screen = recommendScreenForBundle(place, food);
+      const start = state.routeStartTime;
+      const placeEnd = addMinutes(start, state.routePlaceDuration);
+      const foodEnd = addMinutes(placeEnd, state.routeFoodDuration);
+      const screenEnd = addMinutes(foodEnd, 120);
+      const walkKm = distKm(place, food) ?? 0;
+      const transferMin = Math.max(10, Math.round(walkKm * 12));
+      el.routePlan.innerHTML = `
+        <div class="card p-3">
+          <div class="mono text-[11px] text-[#888]">${start} - ${placeEnd}</div>
+          <div class="text-[15px]">1) ${place.name}</div>
+          <div class="hint">основная активность (${state.routePlaceDuration} мин)</div>
+        </div>
+        <div class="card p-3">
+          <div class="mono text-[11px] text-[#888]">${placeEnd} - ${foodEnd}</div>
+          <div class="text-[15px]">2) ${food.name}</div>
+          <div class="hint">ужин (${state.routeFoodDuration} мин), ~${walkKm.toFixed(1)} км от места</div>
+        </div>
+        <div class="card p-3">
+          <div class="mono text-[11px] text-[#888]">${foodEnd} - ${screenEnd}</div>
+          <div class="text-[15px]">3) ${screen ? screen.name : "экран по вкусу"}</div>
+          <div class="hint">экран-блок ~120 мин, рекомендация по вайбу вечера</div>
+        </div>
+        <div class="metric">переход между этапами: <span class="text-[#00ffcc]">~${transferMin} мин</span></div>
+        <div class="metric">next step: <span class="text-[#00ffcc]">после экрана — прогулка 20-30 мин рядом с точкой ужина</span></div>
+      `;
+    }
+
+    function renderBundles() {
+      const place = getSelectedPlace();
+      if (!place) {
+        el.bundleList.innerHTML = "";
+        el.bundleHint.textContent = "выбери место (в деталке) или лидера голосования — и я подберу где поесть рядом";
+        renderRoutePlan();
+        return;
+      }
+      const list = recommendFoodForPlace(place);
+      el.bundleHint.textContent = `база: ${place.name}`;
+      el.bundleList.innerHTML = list.map(i => `
+        <div class="card p-3">
+          <div class="text-[15px]">${i.name}</div>
+          <div class="hint mt-1">${i.desc}</div>
+          <div class="mono text-[11px] text-[#888] mt-2">рейтинг ${i.rating.toFixed(1)} | ~${i.chainDistance.toFixed(1)} км</div>
+        </div>
+      `).join("");
+      renderRoutePlan();
+    }
+
+    function destroyLeafletMap() {
+      if (map) {
+        try { map.remove(); } catch (e) { /* ignore */ }
+        map = null;
+      }
+      mapMarkers = [];
+    }
+
+    function renderMapAsList(points) {
+      const top = points.slice(0, 12);
+      el.map.innerHTML = `<div class="map-points">${
+        top.map((p, idx) => {
+          const yandex = `https://yandex.ru/maps/?ll=${p.lon}%2C${p.lat}&z=15&text=${encodeURIComponent(p.name + " Москва")}`;
+          return `<div class="map-point">
+            <div class="mono text-[11px] text-[#888]">#${idx + 1} • ${sectionLabel(p.type)}</div>
+            <div class="text-[14px]">${p.name}</div>
+            <div class="hint mt-1">${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}</div>
+            <a target="_blank" rel="noopener" href="${yandex}">открыть на карте</a>
+          </div>`;
+        }).join("")
+      }</div>`;
+    }
+
+    function ensureLeafletMap() {
+      if (!el.map || typeof L === "undefined") return false;
+      if (map) return true;
+      el.map.innerHTML = "";
+      map = L.map(el.map, { zoomControl: true }).setView([55.751244, 37.618423], 11);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(map);
+      mapMarkers = [];
+      return true;
+    }
+
+    function initMap() {
+      if (!el.map) return;
+      el.map.innerHTML = `<div class="hint p-3">карта загружается...</div>`;
+    }
+
+    function renderMap() {
+      let points = getFilteredData().filter(i => typeof i.lat === "number" && typeof i.lon === "number");
+      if (!points.length) {
+        points = BASE_DATA.filter(i => i.type === "places" && typeof i.lat === "number" && typeof i.lon === "number").slice(0, 12);
+      }
+      mapPoints = points;
+      if (!points.length) {
+        destroyLeafletMap();
+        el.map.innerHTML = `<div class="hint p-3">нет точек на карте для текущего фильтра</div>`;
+        return;
+      }
+      if (ensureLeafletMap()) {
+        mapMarkers.forEach(m => { try { map.removeLayer(m); } catch (e) { /* ignore */ } });
+        mapMarkers = [];
+        points.forEach(i => {
+          const marker = L.marker([i.lat, i.lon]).addTo(map).bindPopup(`<b>${i.name}</b><br>${sectionLabel(i.type)}`);
+          mapMarkers.push(marker);
+        });
+        try {
+          const group = L.featureGroup(mapMarkers);
+          map.fitBounds(group.getBounds().pad(0.2));
+        } catch (e) { /* ignore */ }
+        return;
+      }
+      destroyLeafletMap();
+      renderMapAsList(points);
+    }
+
+    function update(showTrack = false) {
+      let data = getFilteredData();
+      // Защита от "пустого" зависшего состояния при битых локальных фильтрах.
+      if (!data.length && !state.query && (!state.selectedTags || state.selectedTags.length === 0)) {
+        state.type = ["places", "food", "screen"].includes(state.type) ? state.type : "places";
+        state.budget = state.type === "screen" ? "all" : "all";
+        state.sort = ["score", "name", "rating", "distance"].includes(state.sort) ? state.sort : "score";
+        data = getFilteredData();
+      }
+      renderTagFilters(data);
+      renderResults(data);
+      renderFavorites();
+      renderSmartFolders();
+      renderCollections();
+      renderAnalytics();
+      renderMap();
+      saveState();
+    }
+
+    function ensureCriticalSections() {
+      const hasVisibleResults = resultsEl && resultsEl.children.length > 0;
+      const hasVisibleMap = el.map && el.map.innerHTML.trim().length > 0;
+      if (hasVisibleResults && hasVisibleMap) return;
+
+      // Жесткий fallback: безопасные дефолты и повторный рендер ключевых блоков.
+      state.query = "";
+      state.selectedTags = [];
+      state.type = "places";
+      state.budget = "all";
+      state.sort = "score";
+      syncControls();
+
+      const safeData = getFilteredData();
+      renderTagFilters(safeData);
+      renderResults(safeData.length ? safeData : BASE_DATA.filter(i => i.type === "places"));
+      renderMap();
+    }
+
+    function emergencyRecoverUI(err) {
+      console.error("KUDAGO safe mode activated", err);
+      const fallback = BASE_DATA.filter(i => i.type === "places").slice(0, 12);
+      try {
+        el.resultCount.textContent = String(fallback.length);
+        resultsEl.innerHTML = fallback.map(item => `
+          <div class="card p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-[18px] font-bold">${item.name}</div>
+                <div class="text-[14px] text-[#888]">${item.desc}</div>
+              </div>
+              <span class="mono text-[#00FFCC]">${Number(item.rating || 0).toFixed(1)}</span>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-1">${(item.tags || []).map(t => `<span class="mono text-[11px] text-[#888] border border-[#222] px-2 py-0.5">${t}</span>`).join("")}</div>
+          </div>
+        `).join("");
+      } catch {}
+      try {
+        destroyLeafletMap();
+        el.map.innerHTML = `<div class="map-points">${
+          fallback.map((p, idx) => `<div class="map-point">
+            <div class="mono text-[11px] text-[#888]">#${idx + 1}</div>
+            <div class="text-[14px]">${p.name}</div>
+            <div class="hint mt-1">${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}</div>
+          </div>`).join("")
+        }</div>`;
+      } catch {}
+      toast("включен безопасный режим: базовые рекомендации загружены");
+    }
+
+    function forceRenderIfEmpty() {
+      const resultsEmpty = !resultsEl || resultsEl.children.length === 0;
+      const mapEmpty = !el.map || el.map.innerHTML.trim().length === 0;
+      if (!resultsEmpty && !mapEmpty) return;
+      emergencyRecoverUI(new Error("watchdog fallback"));
+    }
+
+    function syncControls() {
+      el.searchInput.value = state.query;
+      el.budgetFilter.value = state.budget;
+      el.sortBy.value = state.sort;
+      el.modePlacesBtn.classList.toggle("bg-[#00FFCC]", state.type === "places");
+      el.modePlacesBtn.classList.toggle("text-black", state.type === "places");
+      el.modeFoodBtn.classList.toggle("bg-[#00FFCC]", state.type === "food");
+      el.modeFoodBtn.classList.toggle("text-black", state.type === "food");
+      el.modeScreenBtn.classList.toggle("bg-[#00FFCC]", state.type === "screen");
+      el.modeScreenBtn.classList.toggle("text-black", state.type === "screen");
+      const hints = {
+        places: "режим: места",
+        food: "режим: покушать",
+        screen: "режим: фильм/сериал"
+      };
+      const placeholders = {
+        places: "по названию места, тегу...",
+        food: "по ресторану, кухне, формату...",
+        screen: "по фильму, сериалу, жанру..."
+      };
+      el.searchModeHint.textContent = hints[state.type];
+      el.searchInput.placeholder = placeholders[state.type];
+      el.budgetFilterWrap.style.display = state.type === "screen" ? "none" : "";
+      el.collectionSelect.value = state.activeCollection;
+      el.participantsInput.value = String(state.participants);
+      el.routeStartTime.value = state.routeStartTime;
+      el.routePlaceDuration.value = String(state.routePlaceDuration);
+      el.routeFoodDuration.value = String(state.routeFoodDuration);
+      updateAuthStatus();
+      el.sidebar.style.display = "";
+      el.mainContent.classList.remove("md:col-span-12");
+      el.mainContent.classList.add("md:col-span-9");
+      if (state.userLocation) {
+        el.geoInfo.textContent = `гео: ${state.userLocation.lat.toFixed(3)}, ${state.userLocation.lon.toFixed(3)}`;
+      } else {
+        el.geoInfo.textContent = "геолокация не включена";
+      }
+      updateVotesHint();
+    }
+
+    function openPalette() {
+      el.commandPalette.classList.remove("hidden");
+      el.commandInput.value = "";
+      renderCommands("");
+      setTimeout(() => el.commandInput.focus(), 0);
+    }
+    function closePalette() { el.commandPalette.classList.add("hidden"); }
+
+    const COMMANDS = [
+      { id: "reset", label: "сбросить фильтры", run: () => { state.query = ""; state.type = "places"; state.budget = "all"; state.sort = "score"; state.selectedTags = []; syncControls(); update(true); } },
+      { id: "save", label: "сохранить состояние", run: () => { saveState(); } }
+    ];
+
+    function renderCommands(filter) {
+      const list = COMMANDS.filter(c => c.label.includes(filter.toLowerCase()));
+      el.commandList.innerHTML = list.map(c => `<button data-cmd="${c.id}" class="btn-neon w-full text-left">${c.label}</button>`).join("");
+      el.commandList.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
+        const c = COMMANDS.find(x => x.id === btn.dataset.cmd);
+        if (c) c.run();
+        closePalette();
+      }));
+    }
+
+    function openDetails(id) {
+      const item = BASE_DATA.find(x => x.id === id);
+      if (!item) return;
+      if (item.type === "places") state.selectedPlaceId = item.id;
+      saveState();
+      pushCloudState();
+      el.detailsTitle.textContent = item.name;
+      const d = state.userLocation ? distKm(state.userLocation, item) : null;
+      el.detailsSubtitle.textContent = `${item.type} | рейтинг ${item.rating.toFixed(1)}${d ? ` | ~${d.toFixed(1)} км` : ""}`;
+      el.detailsDesc.textContent = item.desc;
+      el.detailsTags.innerHTML = item.tags.map(t => `<span class="mono text-[11px] text-[#888] border border-[#222] px-2 py-1">${t}</span>`).join("");
+      el.detailsSearchLink.href = `https://yandex.ru/search/?text=${encodeURIComponent(item.name + " Москва")}`;
+      el.detailsSaveBtn.onclick = () => {
+        const list = state.collections[state.activeCollection];
+        if (!list.includes(item.id)) list.push(item.id);
+        toast("добавлено в подборку");
+        el.detailsModal.classList.remove("show");
+        saveState();
+        pushCloudState();
+        update();
+      };
+      el.detailsModal.classList.add("show");
+    }
+
+    function setupDnD() {
+      let dragFrom = null;
+      el.widgets.querySelectorAll(".widget").forEach(w => {
+        w.addEventListener("dragstart", () => { dragFrom = w.dataset.widget; });
+        w.addEventListener("dragover", e => e.preventDefault());
+        w.addEventListener("drop", () => {
+          const dragTo = w.dataset.widget;
+          if (!dragFrom || dragFrom === dragTo) return;
+          const order = [...state.widgetOrder];
+          const from = order.indexOf(dragFrom);
+          const to = order.indexOf(dragTo);
+          order.splice(to, 0, order.splice(from, 1)[0]);
+          state.widgetOrder = order;
+          applyWidgetOrder();
+          saveState();
+        });
+      });
+    }
+
+    function applyWidgetOrder() {
+      const map = {};
+      el.widgets.querySelectorAll(".widget").forEach(w => { map[w.dataset.widget] = w; });
+      state.widgetOrder.forEach(id => map[id] && el.widgets.appendChild(map[id]));
+    }
+
+    el.searchInput.addEventListener("input", () => { state.query = el.searchInput.value; update(); });
+    el.budgetFilter.addEventListener("change", () => { state.budget = el.budgetFilter.value; update(); });
+    el.sortBy.addEventListener("change", () => { state.sort = el.sortBy.value; update(); });
+    el.modePlacesBtn.addEventListener("click", () => setSearchMode("places"));
+    el.modeFoodBtn.addEventListener("click", () => setSearchMode("food"));
+    el.modeScreenBtn.addEventListener("click", () => setSearchMode("screen"));
+    el.collectionSelect.addEventListener("change", () => { state.activeCollection = el.collectionSelect.value; update(); });
+    el.routeStartTime.addEventListener("change", () => {
+      state.routeStartTime = el.routeStartTime.value || "18:00";
+      renderRoutePlan();
+      saveState();
+    });
+    el.routePlaceDuration.addEventListener("change", () => {
+      state.routePlaceDuration = Math.max(30, Number(el.routePlaceDuration.value || 90));
+      renderRoutePlan();
+      saveState();
+    });
+    el.routeFoodDuration.addEventListener("change", () => {
+      state.routeFoodDuration = Math.max(30, Number(el.routeFoodDuration.value || 75));
+      renderRoutePlan();
+      saveState();
+    });
+    el.participantsInput.addEventListener("change", () => {
+      const value = Math.max(2, Number(el.participantsInput.value || 2));
+      state.participants = value;
+      updateVotesHint();
+      saveState();
+      pushCloudState();
+    });
+    el.authBtn.addEventListener("click", () => {
+      if (state.currentUser) {
+        state.currentUser = null;
+        saveState();
+        updateAuthStatus();
+        toast("вы вышли");
+        update();
+      } else {
+        openAuthModal();
+      }
+    });
+    el.authLoginBtn.addEventListener("click", authLogin);
+    el.authRegisterBtn.addEventListener("click", authRegister);
+    el.authCloseBtn.addEventListener("click", closeAuthModal);
+    el.clearLocalDataBtn.addEventListener("click", () => {
+      const ok = confirm("Удалить все локальные данные KUDAGO на этом устройстве?");
+      if (!ok) return;
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(AUTH_USERS_KEY);
+      localStorage.removeItem(ONBOARDING_KEY);
+      location.reload();
+    });
+    el.clearFavorites.addEventListener("click", () => { state.favorites = []; saveState(); pushCloudState(); update(); });
+    el.buildBundleBtn.addEventListener("click", () => {
+      const place = getSelectedPlace();
+      if (!place) {
+        toast("сначала выбери место");
+        return;
+      }
+      renderBundles();
+      toast("связка подобрана");
+    });
+    el.buildRouteBtn.addEventListener("click", () => {
+      if (!getSelectedPlace()) {
+        toast("сначала выбери место");
+        return;
+      }
+      renderRoutePlan();
+      toast("маршрут построен");
+    });
+    el.fitMapBtn.addEventListener("click", () => {
+      if (!mapPoints.length) {
+        toast("нет точек для карты");
+        return;
+      }
+      renderMap();
+      toast("карта обновлена");
+    });
+    el.nearbyBtn.addEventListener("click", () => {
+      if (!navigator.geolocation) {
+        toast("геолокация недоступна");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          state.userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          state.sort = "distance";
+          syncControls();
+          update();
+          toast("геолокация включена");
+        },
+        () => toast("доступ к геолокации отклонен"),
+        { enableHighAccuracy: false, timeout: 6000 }
+      );
+    });
+    el.commandInput.addEventListener("input", () => renderCommands(el.commandInput.value));
+    el.commandPalette.addEventListener("click", (e) => { if (e.target === el.commandPalette) closePalette(); });
+    el.detailsModal.addEventListener("click", (e) => { if (e.target === el.detailsModal) el.detailsModal.classList.remove("show"); });
+    el.authModal.addEventListener("click", (e) => { if (e.target === el.authModal) closeAuthModal(); });
+    el.closeDetailsBtn.addEventListener("click", () => el.detailsModal.classList.remove("show"));
+    el.closeOnboardingBtn.addEventListener("click", () => {
+      localStorage.setItem(ONBOARDING_KEY, "1");
+      el.onboarding.classList.remove("show");
+    });
+    el.closeWinnerBtn.addEventListener("click", () => el.winnerOverlay.classList.remove("show"));
+    document.addEventListener("keydown", (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); }
+      if (e.key === "Escape") closePalette();
+      if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); saveState(); }
+    });
+    document.querySelectorAll("[data-jump]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = document.getElementById(btn.dataset.jump);
+        if (!target) return;
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+    window.addEventListener("resize", buildHeartsGrid);
+    window.addEventListener("load", () => {
+      try { renderMap(); } catch (e) { /* ignore */ }
+    });
+
+    let bootStarted = false;
+    function bootApp() {
+      if (bootStarted) return;
+      bootStarted = true;
+      const params = new URLSearchParams(location.search);
+      if (params.get("reset") === "1") {
+        hardResetLocalData();
+        params.delete("reset");
+        const next = `${location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+        history.replaceState(null, "", next);
+      }
+      try {
+        loadState();
+        loadAuthUsers();
+        normalizeState();
+        initCloudSync();
+      } catch (e) {
+        console.error("KUDAGO state restore failed, using defaults", e);
+        hardResetLocalData();
+      }
+      try {
+        syncControls();
+        renderQuickChips();
+        applyWidgetOrder();
+        setupDnD();
+        buildHeartsGrid();
+        initMap();
+        update();
+        ensureCriticalSections();
+        if (!localStorage.getItem(ONBOARDING_KEY)) {
+          el.onboarding.classList.add("show");
+        }
+      } catch (e) {
+        emergencyRecoverUI(e);
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", bootApp);
+    } else {
+      bootApp();
+    }
+    setTimeout(bootApp, 0);
+    setTimeout(forceRenderIfEmpty, 800);
+    setTimeout(forceRenderIfEmpty, 1800);
+  </script>
+</body>
+</html>
